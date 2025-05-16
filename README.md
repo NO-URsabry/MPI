@@ -1,114 +1,69 @@
-#include <stdio.h>
-#include <mpi.h>
-#include <stdlib.h>
-#include <time.h>
+# Parallel Matrix Multiplication with MPI
 
-// Dimentions -> result matrix C = X x Y
+## Overview
+This project implements a parallel matrix multiplication algorithm using the Message Passing Interface (MPI) in C. It efficiently multiplies two matrices, A (X×Z) and B (Z×Y), to produce a result matrix C (X×Y) by distributing the computation across multiple processes. The code is designed for scalability and handles dynamic workload distribution, making it suitable for high-performance computing environments.
 
-#define X 5  // Rows of A and C 
-#define Z 5  // Columns of A, Rows of B 
-#define Y 6  // Columns of B and C  
+## Features
+- **Parallel Processing**: Leverages MPI to distribute matrix rows across processes, reducing computation time for large matrices.
+- **Dynamic Load Balancing**: Evenly divides rows among processes, accounting for remainders to ensure fair workload distribution.
+- **Memory Management**: Includes proper allocation and deallocation to prevent memory leaks.
+- **Input Validation**: Checks if the number of processes exceeds the number of rows in matrix A, preventing invalid configurations.
+- **Random Matrix Generation**: Initializes matrices A and B with random integers for testing.
+- **Clear Output**: Prints input matrices A and B, and the resulting matrix C, with formatted dimensions.
 
+## Matrix Dimensions
+- Matrix A: X×Z (6×5 by default)
+- Matrix B: Z×Y (5×6 by default)
+- Result Matrix C: X×Y (6×6 by default)
 
-void Mul_matrixes(int a[X][Z], int b[Z][Y], int c[X][Y], int start, int end) {
-    for (int i = start; i < end; i++) {
-        for (int j = 0; j < Y; j++) {
-            c[i][j] = 0;  
-            for (int k = 0; k < Z; k++) {
-                c[i][j] += a[i][k] * b[k][j];  // Sum of products
-            }
-        }
-    }
-}
+Dimensions can be modified via the `#define` constants `X`, `Z`, and `Y` in the source code.
 
-void print_matrixes(const char* name, int rows, int cols, int* matrix) {
-    printf("%s (%d x %d):\n", name, rows, cols);
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            printf("%d ", matrix[i * cols + j]);
-        }
-        printf("\n");
-    }
-}
+## Prerequisites
+- **MPI Implementation**: OpenMPI or MPICH (e.g., install `openmpi` on Linux: `sudo apt-get install openmpi-bin openmpi-common libopenmpi-dev`).
+- **C Compiler**: GCC or any compatible compiler.
+- **Operating System**: Linux, macOS, or Windows with an MPI-compatible environment.
 
-int main(int argc, char** argv) {
-    int rank, num_processes;
-    int a[X][Z], b[Z][Y];
-    int c[X][Y];
-    int local_c[X][Y];
-    int start, end, rows_per_process;
-    int *recv_counts = NULL, *display = NULL;
+## Compilation and Execution
+1. **Compile**:
+   ```bash
+   mpicc -o matrix_mult matrix_mult.c
+   ```
+2. **Run**:
+   ```bash
+   mpirun -np <num_processes> ./matrix_mult
+   ```
+   Replace `<num_processes>` with the desired number of processes (must be ≤ X, the number of rows in matrix A).
 
-    // MPI environment Init
-    MPI_Init(&argc, &argv);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &num_processes);
+## Code Structure
+- **main()**: Initializes MPI, sets up matrices, broadcasts input matrices, gathers results, and handles output.
+- **Mul_matrices()**: Performs matrix multiplication for a subset of rows assigned to each process.
+- **print_matrix()**: Utility function to display matrices in a readable format.
+- **MPI Functions**:
+  - `MPI_Bcast`: Broadcasts matrices A and B to all processes.
+  - `MPI_Gatherv`: Collects computed rows of matrix C from all processes.
+  - `MPI_Init`, `MPI_Comm_rank`, `MPI_Comm_size`, `MPI_Finalize`: Standard MPI setup and teardown.
 
-    // Validation --> Num of proccess <= Num of Rows
-    if (num_processes > X && rank == 0) {
-        printf("Err: Num of processes = (%d) is GT matrix A rows (%d).\n", num_processes, X);
-        MPI_Finalize();
-        return 1;
-    }
+## Example Output
+For default dimensions (X=6, Z=5, Y=6) with 4 processes:
+```
+Matrix A (6 x 5):
+23 45 12 67 89
+...
+Matrix B (5 x 6):
+34 56 78 90 12 34
+...
+Resulting Matrix C (6 x 6):
+1234 5678 9012 ...
+...
+```
 
-    // Calculate Num of rows per process
-    int base_rows = X / num_processes;
-    int reminder = X % num_processes;
-    rows_per_process = (rank < reminder) ? base_rows + 1 : base_rows;  // Extra row for processes cuz of reminder -> (one line if)
-    start = rank * base_rows + (rank < reminder ? rank : reminder);
-    end = start + rows_per_process;
+## Notes
+- The code assumes the number of processes does not exceed the number of rows in matrix A (X). If exceeded, an error message is displayed, and the program exits.
+- Random matrix values are generated using `rand() % 100` for simplicity. Modify as needed for specific use cases.
+- The program is optimized for clarity and correctness, with potential for further optimization (e.g., cache-friendly access patterns or advanced MPI collectives).
 
-    // Allocate arrays & Collecting all the results from all processes
-    if (rank == 0) {
-        recv_counts = (int*)malloc(num_processes * sizeof(int));
-        display = (int*)malloc(num_processes * sizeof(int));
-        int offset = 0;
-        for (int i = 0; i < num_processes; i++) {
-            recv_counts[i] = ((i < reminder) ? base_rows + 1 : base_rows) * Y;
-            display[i] = offset;
-            offset += recv_counts[i];
-        }
-    }
+## License
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
-    if (rank == 0) {
-        srand(time(NULL));
-        // Generate Random values for matrix A and B range from 0-99
-        for (int i = 0; i < X; i++) {
-            for (int j = 0; j < Z; j++) {
-                a[i][j] = rand() % 100;
-            }
-        }
-
-        for (int i = 0; i < Z; i++) {
-            for (int j = 0; j < Y; j++) {
-                b[i][j] = rand() % 100;
-            }
-        }
-
-        print_matrixes("Matrix A", X, Z, (int*)a);
-        print_matrixes("Matrix B", Z, Y, (int*)b);
-    }
-
-    // Broadcast matrixes A and B to all processes --> share the matrixes to all processes
-    MPI_Bcast(a, X * Z, MPI_INT, 0, MPI_COMM_WORLD);
-    MPI_Bcast(b, Z * Y, MPI_INT, 0, MPI_COMM_WORLD);
-
-    Mul_matrixes(a, b, local_c, start, end);
-
-    // collecting the results from all processes
-    MPI_Gatherv(&local_c[start][0], rows_per_process * Y, MPI_INT, c, recv_counts, display, MPI_INT, 0, MPI_COMM_WORLD);
-
-    if (rank == 0) {
-        print_matrixes("Resulting Matrix C", X, Y, (int*)c);
-
-        // Clean up if you don’t wanna leak memory !.. cuz, C dont have garbage collector
-        free(recv_counts);
-        free(display);
-    }
-    // MPI environment Close
-    MPI_Finalize();
-    return 0;
-}
-
-
-
+## Contributing
+Contributions are welcome! Please submit a pull request or open an issue for bugs, improvements, or feature requests.

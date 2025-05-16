@@ -1,6 +1,3 @@
-# MPI
-
-
 # Parallel Matrix Multiplication with MPI
 
 ## Overview
